@@ -1,0 +1,105 @@
+import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerStartContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerStopContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerRemoveContainer
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerRemoveImage
+import com.bmuschko.gradle.docker.tasks.image.Dockerfile
+
+plugins {
+    id 'org.springframework.boot' version '2.2.5.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+    id 'java'
+    id 'com.bmuschko.docker-remote-api' version '4.8.1'
+    id "at.phatbl.shellexec" version "1.5.2"
+}
+
+group = 'com.meltsan.corresponsal'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '11'
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.projectlombok:lombok'
+    runtimeOnly 'com.h2database:h2'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+    }
+    compile "io.springfox:springfox-swagger2:2.9.2"
+    compile "io.springfox:springfox-swagger-ui:2.9.2"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+task cleanBuildDir(type: at.phatbl.shellexec.ShellExec) {
+    command "rm -rf build/libs/*.jar; rm -rf build/libs/Dockerfile"
+}
+
+task createDockerfile(type: com.bmuschko.gradle.docker.tasks.image.Dockerfile) {
+    dependsOn cleanBuildDir
+    dependsOn assemble
+    tasks.findByName('assemble').mustRunAfter 'cleanBuildDir'
+
+    println "CREANDO DOCKERFILE ..."
+    destFile = project.file('build/libs/Dockerfile')
+    println "destFile --> ${destFile.get().asFile.parentFile}"
+
+    from('openjdk:11.0.3-jre-slim-stretch')
+
+    copyFile("demo*.jar", '/opt/app.jar')
+
+    exposePort(8080)
+    entryPoint("java", "-Djava.awt.headless=true", "-Xms4096m", "-Xmx4096m", "-jar", "/opt/app.jar")
+}
+
+task buildImage('type': DockerBuildImage, dependsOn: createDockerfile) {
+    println "CREANDO IMAGEN ..."
+
+    inputDir.set(project.layout.buildDirectory.dir('libs'))
+    println "inputDir ---> ${inputDir}"
+    tags.add('mts/demo-employee:1.0')
+}
+
+task deleteImage('type': DockerRemoveImage) {
+    imageId.set('mts/demo-employee:1.0')
+}
+
+task deleteAndBuildImage(dependsOn: deleteImage) {
+    println 'Delete and build Image Docker'
+    finalizedBy buildImage
+}
+
+task createContainer(type: DockerCreateContainer) {
+    dependsOn buildImage
+    targetImageId buildImage.getImageId()
+    portBindings = ['8080:8080']
+    autoRemove = false
+    containerName = 'mts-demo-employee'
+}
+
+task startContainer(type: DockerStartContainer) {
+    dependsOn createContainer
+    targetContainerId createContainer.getContainerId()
+}
+
+task stopContainer(type: DockerStopContainer) {
+    targetContainerId 'mts-demo-employee'
+}
+
+task removeContainer(type: DockerRemoveContainer) {
+    targetContainerId 'mts-demo-employee'
+}

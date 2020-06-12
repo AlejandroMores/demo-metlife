@@ -1,0 +1,22 @@
+version: '3.7'
+services:
+  backend:
+    image: mts/demo-employee:1.0
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
+    restart: always
+  frontend:
+    image:  mts-prod/demo-front:1.0.0
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
+    restart: always
+    ports:
+      - "80:80"
